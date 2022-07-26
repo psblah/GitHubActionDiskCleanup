@@ -1,0 +1,182 @@
+name: "GitHub Action Disk Cleanup"
+description: "A GitHub action to cleanup disk space on GitHub runners."
+
+# Inspired by: https://github.com/jlumbroso/free-disk-space
+
+# See: https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#branding
+branding:
+  icon: "trash"
+  color: "blue"
+
+inputs:
+  google-cloud-sdk:
+    description: "Remove google-cloud-sdk"
+    required: false
+    default: "false"
+
+  # option inspired by:
+  # https://github.com/apache/flink/blob/master/tools/azure-pipelines/free_disk_space.sh
+  large-packages:
+    description: "Remove large packages"
+    required: false
+    default: "true"
+
+  # option inspired by:
+  # https://github.com/actions/virtual-environments/issues/2875#issuecomment-1163392159
+  tool-cache:
+    description: "Remove image tool cache"
+    required: false
+    default: "false"
+
+  swap-storage:
+    description: "Remove swap storage"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+
+        # ======
+        # SCRIPT
+        # ======
+
+        # Display initial disk space stats
+        formatByteCount() { echo $(numfmt --to=iec-i --suffix=B --padding=7 $1'000'); }
+        AVAILABLE_ROOT_INITIAL=$(df -a / | sed 1d | awk '{ print $4 }')
+
+
+        # Remove Android library
+          echo "::group::Andriod library cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+          sudo rm -rf /usr/local/lib/android
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((AFTER-BEFORE))
+
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+        # Option: Remove .NET runtime
+          echo "::group::dotnet cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+
+          sudo rm -rf /usr/share/dotnet
+
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((AFTER-BEFORE))
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+
+        # Option: Remove .NET runtime
+          echo "::group::ghc cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+
+          sudo rm -rf /opt/ghc
+
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((AFTER-BEFORE))
+
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+
+        # Option: Remove google-cloud-sdk
+        if [[ ${{ inputs.google-cloud-sdk }} == 'true' ]]; then
+          echo "::group::google-cloud-sdk cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+
+          sudo apt-get remove -y google-cloud-sdk
+
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((AFTER-BEFORE))
+
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+        fi
+
+
+        # Option: Remove large packages
+        # REF: https://github.com/apache/flink/blob/master/tools/azure-pipelines/free_disk_space.sh
+
+        if [[ ${{ inputs.large-packages }} == 'true' ]]; then
+          echo "::group::large-package cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+
+          sudo apt-get remove -y '^dotnet-.*'
+          sudo apt-get remove -y '^llvm-.*'
+          sudo apt-get remove -y 'php.*'
+          sudo apt-get remove -y '^mongodb-.*'
+          sudo apt-get remove -y '^mysql-.*'
+          sudo apt-get remove -y azure-cli hhvm google-chrome-stable firefox powershell mono-devel libgl1-mesa-dri
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((AFTER-BEFORE))
+
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+        fi
+
+        # Option: Remove tool cache
+        # REF: https://github.com/actions/virtual-environments/issues/2875#issuecomment-1163392159
+
+        if [[ ${{ inputs.tool-cache }} == 'true' ]]; then
+          echo "::group::tool-cache cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((BEFORE-AFTER))
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+        fi
+
+        # Option: Remove Swap storage
+
+        if [[ ${{ inputs.swap-storage }} == 'true' ]]; then
+          echo "::group::swap-storage cleanup"
+          SECONDS=0
+          BEFORE=$(df -a / | sed 1d | awk '{ print $4 }')
+
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          free -h
+          
+          AFTER=$(df -a / | sed 1d | awk '{ print $4 }')
+          SAVED=$((AFTER-BEFORE))
+
+          echo "deleted: $(formatByteCount $SAVED)"
+          duration=$SECONDS
+          echo "duration: $(($duration / 60))m $(($duration % 60))s"
+          echo "::endgroup::"
+        fi
+
+        # Output saved space statistic
+
+        AVAILABLE_ROOT_END=$(df -a / | sed 1d | awk '{ print $4 }')
+
+        SAVED=$((AVAILABLE_ROOT_END-AVAILABLE_ROOT_INITIAL))
+        echo "Total deleted: $(formatByteCount $SAVED)"

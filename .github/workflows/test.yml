@@ -1,0 +1,15 @@
+name: Runner Disk Cleanup (Ubuntu)
+on: push
+
+jobs:
+  runner-disk-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      # If there is a problem with this GitHub Actions, this step will fail
+      - name: Free Disk Space
+        uses: psblah/GitHubActionDiskCleanup@main
+        with:
+          google-cloud-sdk: true
+          tool-cache: true
+          large-packages: true
+          swap-storage: true
